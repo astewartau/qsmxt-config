@@ -449,3 +449,167 @@ fn join_list(items: &[String]) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_methods() {
+        let config = PipelineConfig::default();
+        let out = generate_methods(&config);
+        assert!(out.contains("QSM processing was performed using qsmxt.rs"));
+        assert!(out.contains("Phase offset removal"));
+        assert!(out.contains("ROMEO"));
+        assert!(out.contains("V-SHARP"));
+        assert!(out.contains("RTS"));
+        assert!(out.contains("mean-referenced"));
+        assert!(out.contains("# Methods"));
+        assert!(out.contains("## References"));
+    }
+
+    #[test]
+    fn test_tgv_methods() {
+        let mut config = PipelineConfig::default();
+        config.inversion.algorithm = QsmAlgorithm::Tgv;
+        let out = generate_methods(&config);
+        assert!(out.contains("Total Generalized Variation (TGV)"));
+        assert!(!out.contains("Phase unwrapping was performed"));
+        assert!(!out.contains("Background field removal"));
+    }
+
+    #[test]
+    fn test_qsmart_methods() {
+        let mut config = PipelineConfig::default();
+        config.inversion.algorithm = QsmAlgorithm::Qsmart;
+        let out = generate_methods(&config);
+        assert!(out.contains("QSMART"));
+    }
+
+    #[test]
+    fn test_laplacian_methods() {
+        let mut config = PipelineConfig::default();
+        config.field_mapping.unwrapping_algorithm = UnwrappingAlgorithm::Laplacian;
+        let out = generate_methods(&config);
+        assert!(out.contains("Laplacian method"));
+        assert!(out.contains("Schofield"));
+    }
+
+    #[test]
+    fn test_romeo_individual_mode() {
+        let config = PipelineConfig::default();
+        let out = generate_methods(&config);
+        assert!(out.contains("individual per-echo"));
+    }
+
+    #[test]
+    fn test_romeo_template_mode() {
+        let mut config = PipelineConfig::default();
+        config.field_mapping.romeo.individual = false;
+        let out = generate_methods(&config);
+        assert!(out.contains("template-based temporal"));
+    }
+
+    #[test]
+    fn test_bipolar_methods() {
+        let mut config = PipelineConfig::default();
+        config.field_mapping.bipolar_correction = true;
+        let out = generate_methods(&config);
+        assert!(out.contains("bipolar gradient correction"));
+        assert!(out.contains("Eckstein, 2021"));
+    }
+
+    #[test]
+    fn test_offset_and_bipolar_combined() {
+        let mut config = PipelineConfig::default();
+        config.field_mapping.bipolar_correction = true;
+        let out = generate_methods(&config);
+        assert!(out.contains("Phase offset removal") && out.contains("bipolar gradient correction"));
+    }
+
+    #[test]
+    fn test_no_offset_removal() {
+        let mut config = PipelineConfig::default();
+        config.field_mapping.phase_offset_removal = false;
+        let out = generate_methods(&config);
+        assert!(!out.contains("Phase offset removal"));
+    }
+
+    #[test]
+    fn test_b0_linear_fit_methods() {
+        let mut config = PipelineConfig::default();
+        config.field_mapping.b0_estimation = B0Estimation::LinearFit;
+        let out = generate_methods(&config);
+        assert!(out.contains("linear fit"));
+    }
+
+    #[test]
+    fn test_b0_weighted_avg_methods() {
+        let config = PipelineConfig::default();
+        let out = generate_methods(&config);
+        assert!(out.contains("weighted averaging"));
+        assert!(out.contains("phase-snr"));
+    }
+
+    #[test]
+    fn test_all_bf_algorithms_in_methods() {
+        for (alg, expected) in [
+            (BfAlgorithm::Vsharp, "V-SHARP"),
+            (BfAlgorithm::Pdf, "PDF"),
+            (BfAlgorithm::Lbv, "LBV"),
+            (BfAlgorithm::Ismv, "iSMV"),
+            (BfAlgorithm::Sharp, "SHARP"),
+            (BfAlgorithm::Resharp, "RESHARP"),
+            (BfAlgorithm::Harperella, "HARPERELLA"),
+            (BfAlgorithm::Iharperella, "iHARPERELLA"),
+        ] {
+            let mut c = PipelineConfig::default();
+            c.bg_removal.algorithm = alg;
+            let out = generate_methods(&c);
+            assert!(out.contains(expected), "missing {} for {:?}", expected, alg);
+        }
+    }
+
+    #[test]
+    fn test_swi_methods() {
+        let mut config = PipelineConfig::default();
+        config.pipeline.do_swi = true;
+        let out = generate_methods(&config);
+        assert!(out.contains("CLEAR-SWI"));
+    }
+
+    #[test]
+    fn test_t2star_r2star_methods() {
+        let mut config = PipelineConfig::default();
+        config.pipeline.do_t2starmap = true;
+        config.pipeline.do_r2starmap = true;
+        let out = generate_methods(&config);
+        assert!(out.contains("T2* and R2*"));
+        assert!(out.contains("ARLO"));
+    }
+
+    #[test]
+    fn test_no_qsm() {
+        let mut config = PipelineConfig::default();
+        config.pipeline.do_qsm = false;
+        let out = generate_methods(&config);
+        assert!(out.contains("MRI processing"));
+        assert!(!out.contains("Dipole inversion"));
+    }
+
+    #[test]
+    fn test_qsm_reference_none() {
+        let mut config = PipelineConfig::default();
+        config.qsm.reference = QsmReference::None;
+        let out = generate_methods(&config);
+        assert!(out.contains("No susceptibility referencing"));
+    }
+
+    #[test]
+    fn test_join_list() {
+        assert_eq!(join_list(&[]), "");
+        assert_eq!(join_list(&["a".into()]), "a");
+        assert_eq!(join_list(&["a".into(), "b".into()]), "a and b");
+        assert_eq!(join_list(&["a".into(), "b".into(), "c".into()]), "a, b, and c");
+    }
+}

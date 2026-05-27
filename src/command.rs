@@ -256,10 +256,201 @@ mod tests {
         let config = PipelineConfig::default();
         let toml = config.to_toml().unwrap();
         let parsed = PipelineConfig::from_toml(&toml).unwrap();
-        // Verify key fields survive roundtrip
         assert_eq!(parsed.inversion.algorithm, QsmAlgorithm::Rts);
         assert_eq!(parsed.field_mapping.unwrapping_algorithm, UnwrappingAlgorithm::Romeo);
         assert!(parsed.field_mapping.phase_offset_removal);
         assert!(parsed.field_mapping.romeo.individual);
+    }
+
+    #[test]
+    fn test_all_inversion_algorithms() {
+        for (alg, name) in [
+            (QsmAlgorithm::Tv, "tv"), (QsmAlgorithm::Tkd, "tkd"),
+            (QsmAlgorithm::Tsvd, "tsvd"), (QsmAlgorithm::Tgv, "tgv"),
+            (QsmAlgorithm::Tikhonov, "tikhonov"), (QsmAlgorithm::Nltv, "nltv"),
+            (QsmAlgorithm::Medi, "medi"), (QsmAlgorithm::Ilsqr, "ilsqr"),
+            (QsmAlgorithm::Qsmart, "qsmart"),
+        ] {
+            let mut c = PipelineConfig::default();
+            c.inversion.algorithm = alg;
+            let cmd = generate_command(&c);
+            assert!(cmd.contains(&format!("--qsm-algorithm {}", name)), "missing algorithm flag for {}", name);
+        }
+    }
+
+    #[test]
+    fn test_all_bf_algorithms() {
+        for (alg, name) in [
+            (BfAlgorithm::Pdf, "pdf"), (BfAlgorithm::Lbv, "lbv"),
+            (BfAlgorithm::Ismv, "ismv"), (BfAlgorithm::Sharp, "sharp"),
+            (BfAlgorithm::Resharp, "resharp"), (BfAlgorithm::Harperella, "harperella"),
+            (BfAlgorithm::Iharperella, "iharperella"),
+        ] {
+            let mut c = PipelineConfig::default();
+            c.bg_removal.algorithm = alg;
+            let cmd = generate_command(&c);
+            assert!(cmd.contains(&format!("--bf-algorithm {}", name)), "missing bf flag for {}", name);
+        }
+    }
+
+    #[test]
+    fn test_tv_params() {
+        let mut c = PipelineConfig::default();
+        c.inversion.algorithm = QsmAlgorithm::Tv;
+        c.inversion.tv.lambda = 0.001;
+        c.inversion.tv.max_iter = 100;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--tv-lambda 0.001"));
+        assert!(cmd.contains("--tv-max-iter 100"));
+    }
+
+    #[test]
+    fn test_medi_params() {
+        let mut c = PipelineConfig::default();
+        c.inversion.algorithm = QsmAlgorithm::Medi;
+        c.inversion.medi.lambda = 999.0;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--medi-lambda 999"));
+    }
+
+    #[test]
+    fn test_tgv_params() {
+        let mut c = PipelineConfig::default();
+        c.inversion.algorithm = QsmAlgorithm::Tgv;
+        c.inversion.tgv.iterations = 500;
+        c.inversion.tgv.erosions = 2;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--tgv-iterations 500"));
+        assert!(cmd.contains("--tgv-erosions 2"));
+    }
+
+    #[test]
+    fn test_qsmart_params() {
+        let mut c = PipelineConfig::default();
+        c.inversion.algorithm = QsmAlgorithm::Qsmart;
+        c.inversion.qsmart.vasc_sphere_radius = 10;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--qsmart-vasc-sphere-radius 10"));
+    }
+
+    #[test]
+    fn test_b0_estimation_linear_fit() {
+        let mut c = PipelineConfig::default();
+        c.field_mapping.b0_estimation = B0Estimation::LinearFit;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--b0-estimation linear-fit"));
+    }
+
+    #[test]
+    fn test_b0_weight_type() {
+        let mut c = PipelineConfig::default();
+        c.field_mapping.b0_weight_type = B0WeightType::Average;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--b0-weight-type average"));
+    }
+
+    #[test]
+    fn test_laplacian_unwrapping() {
+        let mut c = PipelineConfig::default();
+        c.field_mapping.unwrapping_algorithm = UnwrappingAlgorithm::Laplacian;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--unwrapping-algorithm laplacian"));
+    }
+
+    #[test]
+    fn test_romeo_correct_global_disabled() {
+        let mut c = PipelineConfig::default();
+        c.field_mapping.romeo.correct_global = false;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--no-romeo-correct-global"));
+    }
+
+    #[test]
+    fn test_romeo_weight_flags() {
+        let mut c = PipelineConfig::default();
+        c.field_mapping.romeo.phase_gradient_coherence = false;
+        c.field_mapping.romeo.mag_coherence = false;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--no-romeo-phase-gradient-coherence"));
+        assert!(cmd.contains("--no-romeo-mag-coherence"));
+    }
+
+    #[test]
+    fn test_mask_non_default() {
+        let mut c = PipelineConfig::default();
+        c.masking.sections[0].refinements = vec![
+            crate::masking::MaskOp::Erode { iterations: 3 },
+        ];
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--mask"));
+        assert!(cmd.contains("erode:3"));
+    }
+
+    #[test]
+    fn test_pipeline_toggles() {
+        let mut c = PipelineConfig::default();
+        c.pipeline.do_qsm = false;
+        c.pipeline.do_swi = true;
+        c.pipeline.do_t2starmap = true;
+        c.pipeline.do_r2starmap = true;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--no-qsm"));
+        assert!(cmd.contains("--do-swi"));
+        assert!(cmd.contains("--do-t2starmap"));
+        assert!(cmd.contains("--do-r2starmap"));
+    }
+
+    #[test]
+    fn test_inhomogeneity_disabled() {
+        let mut c = PipelineConfig::default();
+        c.masking.inhomogeneity_correction = false;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--no-inhomogeneity-correction"));
+    }
+
+    #[test]
+    fn test_qsm_reference_none() {
+        let mut c = PipelineConfig::default();
+        c.qsm.reference = QsmReference::None;
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--qsm-reference none"));
+    }
+
+    #[test]
+    fn test_json_roundtrip() {
+        let config = PipelineConfig::default();
+        let json = config.to_json().unwrap();
+        let parsed: PipelineConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.inversion.algorithm, QsmAlgorithm::Rts);
+    }
+
+    #[test]
+    fn test_partial_toml() {
+        // Only specify one field — rest should use defaults
+        let toml = r#"
+[inversion]
+algorithm = "tv"
+"#;
+        let config = PipelineConfig::from_toml(toml).unwrap();
+        assert_eq!(config.inversion.algorithm, QsmAlgorithm::Tv);
+        // Everything else should be default
+        assert!(config.pipeline.do_qsm);
+        assert_eq!(config.bg_removal.algorithm, BfAlgorithm::Vsharp);
+        assert!(config.field_mapping.phase_offset_removal);
+    }
+
+    #[test]
+    fn test_empty_toml() {
+        let config = PipelineConfig::from_toml("").unwrap();
+        assert_eq!(config.inversion.algorithm, QsmAlgorithm::Rts);
+        assert!(config.pipeline.do_qsm);
+    }
+
+    #[test]
+    fn test_phase_offset_sigma() {
+        let mut c = PipelineConfig::default();
+        c.field_mapping.phase_offset_sigma = [10.0, 10.0, 5.0];
+        let cmd = generate_command(&c);
+        assert!(cmd.contains("--phase-offset-sigma 10 10 5"));
     }
 }
