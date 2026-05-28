@@ -612,4 +612,345 @@ mod tests {
         assert_eq!(join_list(&["a".into(), "b".into()]), "a and b");
         assert_eq!(join_list(&["a".into(), "b".into(), "c".into()]), "a, b, and c");
     }
+
+    // ─── Masking description tests ───
+
+    #[test]
+    fn test_masking_otsu_threshold() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("Otsu thresholding"));
+        assert!(out.contains("Otsu, 1979"));
+    }
+
+    #[test]
+    fn test_masking_bet() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Bet { fractional_intensity: 0.35 },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("BET brain extraction"));
+        assert!(out.contains("Smith, 2002"));
+        assert!(out.contains("f=0.35"));
+    }
+
+    #[test]
+    fn test_masking_fixed_threshold() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Fixed, value: Some(0.3) },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("fixed thresholding"));
+        assert!(out.contains("value=0.3"));
+    }
+
+    #[test]
+    fn test_masking_percentile_threshold() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Percentile, value: Some(80.0) },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("percentile thresholding"));
+        assert!(out.contains("80th percentile"));
+    }
+
+    #[test]
+    fn test_masking_phase_quality_input() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::PhaseQuality,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("ROMEO phase quality map"));
+    }
+
+    #[test]
+    fn test_masking_magnitude_first_input() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::MagnitudeFirst,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("first-echo magnitude image"));
+    }
+
+    #[test]
+    fn test_masking_magnitude_last_input() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::MagnitudeLast,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("last-echo magnitude image"));
+    }
+
+    #[test]
+    fn test_masking_with_inhomogeneity() {
+        let mut config = PipelineConfig::default();
+        config.masking.inhomogeneity_correction = true;
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("Inhomogeneity correction"));
+        assert!(out.contains("Eckstein et al., 2019"));
+        assert!(out.contains("inhomogeneity-corrected RSS-combined magnitude"));
+    }
+
+    #[test]
+    fn test_masking_inhomogeneity_first_echo() {
+        let mut config = PipelineConfig::default();
+        config.masking.inhomogeneity_correction = true;
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::MagnitudeFirst,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("first-echo magnitude image"));
+        assert!(out.contains("inhomogeneity-corrected"));
+    }
+
+    #[test]
+    fn test_masking_no_inhomogeneity() {
+        let mut config = PipelineConfig::default();
+        config.masking.inhomogeneity_correction = false;
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![],
+        }];
+        let out = generate_methods(&config);
+        assert!(!out.contains("Inhomogeneity correction"));
+        assert!(out.contains("the RSS-combined magnitude image"));
+        assert!(!out.contains("inhomogeneity-corrected"));
+    }
+
+    #[test]
+    fn test_masking_refinements() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![
+                MaskOp::Dilate { iterations: 1 },
+                MaskOp::FillHoles { max_size: 0 },
+                MaskOp::Erode { iterations: 1 },
+            ],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("followed by"));
+        assert!(out.contains("dilation"));
+        assert!(out.contains("hole-filling"));
+        assert!(out.contains("erosion"));
+    }
+
+    #[test]
+    fn test_masking_erode_singular() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![MaskOp::Erode { iterations: 1 }],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("erosion (1 iteration)"));
+        assert!(!out.contains("iterations)"));
+    }
+
+    #[test]
+    fn test_masking_erode_plural() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![MaskOp::Erode { iterations: 3 }],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("erosion (3 iterations)"));
+    }
+
+    #[test]
+    fn test_masking_close_refinement() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![MaskOp::Close { radius: 5 }],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("morphological closing (radius=5)"));
+    }
+
+    #[test]
+    fn test_masking_gaussian_refinement() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![MaskOp::GaussianSmooth { sigma_mm: 2.5 }],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("Gaussian smoothing (sigma=2.5 mm)"));
+    }
+
+    #[test]
+    fn test_masking_fill_holes_nonzero() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![MaskSection {
+            input: MaskingInput::Magnitude,
+            generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+            refinements: vec![MaskOp::FillHoles { max_size: 500 }],
+        }];
+        let out = generate_methods(&config);
+        assert!(out.contains("hole-filling (max 500 voxels)"));
+    }
+
+    #[test]
+    fn test_masking_multiple_sections_or() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![
+            MaskSection {
+                input: MaskingInput::Magnitude,
+                generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+                refinements: vec![],
+            },
+            MaskSection {
+                input: MaskingInput::PhaseQuality,
+                generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+                refinements: vec![],
+            },
+        ];
+        let out = generate_methods(&config);
+        assert!(out.contains("combining"));
+        assert!(out.contains("2 mask sections"));
+        assert!(out.contains("OR operation"));
+    }
+
+    #[test]
+    fn test_masking_empty_sections() {
+        let mut config = PipelineConfig::default();
+        config.masking.sections = vec![];
+        let out = generate_methods(&config);
+        assert!(!out.contains("A brain mask was generated"));
+    }
+
+    #[test]
+    fn test_masking_inhomogeneity_mixed_inputs() {
+        let mut config = PipelineConfig::default();
+        config.masking.inhomogeneity_correction = true;
+        config.masking.sections = vec![
+            MaskSection {
+                input: MaskingInput::Magnitude,
+                generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+                refinements: vec![],
+            },
+            MaskSection {
+                input: MaskingInput::MagnitudeFirst,
+                generator: MaskOp::Threshold { method: MaskThresholdMethod::Otsu, value: None },
+                refinements: vec![],
+            },
+        ];
+        let out = generate_methods(&config);
+        assert!(out.contains("applied to the magnitude data"));
+    }
+
+    // ─── Citation inline tests ───
+
+    #[test]
+    fn test_cite_inline_known_keys() {
+        assert_eq!(cite_inline(&CITE_VSHARP), "Wu et al., 2012");
+        assert_eq!(cite_inline(&CITE_SHARP), "Schweser et al., 2011");
+        assert_eq!(cite_inline(&CITE_PDF), "Liu et al., 2011");
+        assert_eq!(cite_inline(&CITE_ISMV), "Wen et al., 2014");
+        assert_eq!(cite_inline(&CITE_LBV), "Zhou et al., 2014");
+        assert_eq!(cite_inline(&CITE_RTS), "Kames et al., 2018");
+        assert_eq!(cite_inline(&CITE_RESHARP), "Sun & Wilman, 2014");
+        assert_eq!(cite_inline(&CITE_HARPERELLA), "Li et al., 2014");
+        assert_eq!(cite_inline(&CITE_IHARPERELLA), "Li et al., 2015");
+        assert_eq!(cite_inline(&CITE_BIPOLAR), "Eckstein, 2021");
+    }
+
+    #[test]
+    fn test_cite_inline_unknown_key() {
+        let unknown = Citation { key: "unknown2099", text: "Some text" };
+        assert_eq!(cite_inline(&unknown), "unknown2099");
+    }
+
+    // ─── All inversion algorithms in methods ───
+
+    #[test]
+    fn test_all_inversion_algorithms_in_methods() {
+        for (alg, expected) in [
+            (QsmAlgorithm::Rts, "RTS"),
+            (QsmAlgorithm::Tv, "Total Variation"),
+            (QsmAlgorithm::Tkd, "TKD"),
+            (QsmAlgorithm::Tsvd, "TSVD"),
+            (QsmAlgorithm::Tikhonov, "Tikhonov"),
+            (QsmAlgorithm::Nltv, "NLTV"),
+            (QsmAlgorithm::Medi, "MEDI"),
+            (QsmAlgorithm::Ilsqr, "iLSQR"),
+        ] {
+            let mut c = PipelineConfig::default();
+            c.inversion.algorithm = alg;
+            let out = generate_methods(&c);
+            assert!(out.contains("Dipole inversion was performed using"), "missing dipole sentence for {:?}", alg);
+            assert!(out.contains(expected), "missing '{}' for {:?}", expected, alg);
+        }
+    }
+
+    // ─── Full pipeline test ───
+
+    #[test]
+    fn test_all_features_enabled() {
+        let mut config = PipelineConfig::default();
+        config.pipeline.do_swi = true;
+        config.pipeline.do_t2starmap = true;
+        config.pipeline.do_r2starmap = true;
+        let out = generate_methods(&config);
+        assert!(out.contains("QSM processing"));
+        assert!(out.contains("CLEAR-SWI"));
+        assert!(out.contains("T2* and R2* maps"));
+        assert!(out.contains("## References"));
+    }
+
+    #[test]
+    fn test_t2star_only() {
+        let mut config = PipelineConfig::default();
+        config.pipeline.do_t2starmap = true;
+        let out = generate_methods(&config);
+        assert!(out.contains("T2* maps were computed"));
+        assert!(!out.contains("R2* maps"));
+    }
+
+    #[test]
+    fn test_r2star_only() {
+        let mut config = PipelineConfig::default();
+        config.pipeline.do_r2starmap = true;
+        let out = generate_methods(&config);
+        assert!(out.contains("R2* maps were computed"));
+        assert!(!out.contains("T2* maps"));
+    }
 }
