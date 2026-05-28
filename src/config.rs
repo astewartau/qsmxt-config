@@ -160,7 +160,7 @@ impl Default for SwiConfig {
 
 // ─── Top-level config and section structs ───
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PipelineConfig {
     #[serde(default)]
@@ -292,22 +292,6 @@ impl Default for QsmConfig {
     fn default() -> Self { Self { reference: QsmReference::Mean } }
 }
 
-impl Default for PipelineConfig {
-    fn default() -> Self {
-        Self {
-            description: String::new(),
-            pipeline: PipelineToggles::default(),
-            field_mapping: FieldMappingConfig::default(),
-            masking: MaskingConfig::default(),
-            bg_removal: BgRemovalConfig::default(),
-            inversion: InversionConfig::default(),
-            qsm: QsmConfig::default(),
-            swi: SwiConfig::default(),
-            bet: BetConfig::default(),
-            homogeneity: HomogeneityConfig::default(),
-        }
-    }
-}
 
 impl PipelineConfig {
     pub fn from_toml(s: &str) -> crate::Result<Self> {
