@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check, Clippy & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Cargo check
+        run: cargo check --all-targets
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-tarpaulin
+        uses: taiki-e/install-action@cargo-tarpaulin
+
+      - name: Run coverage
+        run: cargo tarpaulin --engine llvm --out json --output-dir target/tarpaulin --timeout 120 -- --test-threads=1
+
+      - name: Check coverage threshold (90%)
+        run: |
+          COVERAGE=$(python3 -c "import json; data=json.load(open('target/tarpaulin/tarpaulin-report.json')); print(f\"{data['coverage']:.1f}\")")
+          echo "Coverage: ${COVERAGE}%"
+          python3 -c "
+          cov = float('${COVERAGE}')
+          if cov < 90:
+              print(f'FAIL: Coverage {cov}% is below 90% threshold')
+              exit(1)
+          print(f'PASS: Coverage {cov}% meets 90% threshold')
+          "

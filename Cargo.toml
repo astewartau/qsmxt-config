@@ -1,6 +1,6 @@
 [package]
 name = "qsmxt-config"
-version = "0.1.0"
+version = "0.0.0"  # set automatically by release CI from git tag
 edition = "2021"
 description = "Pipeline configuration, command generation, and methods text for QSMxT"
 

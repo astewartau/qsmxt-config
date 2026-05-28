@@ -1,0 +1,72 @@
+name: Release
+run-name: Release ${{ github.event.release.tag_name }}
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test & Coverage Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Install cargo-tarpaulin
+        uses: taiki-e/install-action@cargo-tarpaulin
+
+      - name: Enforce 90% coverage
+        run: |
+          cargo tarpaulin --engine llvm --out json --output-dir target/tarpaulin --timeout 120 -- --test-threads=1
+          COVERAGE=$(python3 -c "import json; data=json.load(open('target/tarpaulin/tarpaulin-report.json')); print(f\"{data['coverage']:.1f}\")")
+          echo "Coverage: ${COVERAGE}%"
+          python3 -c "
+          cov = float('${COVERAGE}')
+          if cov < 90:
+              print(f'FAIL: Coverage {cov}% is below 90% threshold')
+              exit(1)
+          print(f'PASS: Coverage {cov}% meets 90% threshold')
+          "
+
+  package:
+    name: Package Crate
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Extract version from release tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION"
+
+      - name: Set version in Cargo.toml
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ steps.version.outputs.version }}"/' Cargo.toml
+          echo "Cargo.toml version set to:"
+          grep '^version' Cargo.toml
+
+      - name: Package crate
+        run: cargo package --allow-dirty
+
+      - name: Upload crate to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CRATE="target/package/qsmxt-config-${{ steps.version.outputs.version }}.crate"
+          gh release upload "$GITHUB_REF_NAME" "$CRATE"
